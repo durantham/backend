@@ -4,6 +4,8 @@ from bs4 import BeautifulSoup
 import spacy
 from langdetect import detect
 from afinn import Afinn
+from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
+from textblob import TextBlob
 from markdown import markdown
 import time
 import json
@@ -35,11 +37,17 @@ api = PushshiftAPI()
 nlp = spacy.load("en", disable=['parser', 'tagger', 'ner'])
 stops = nlp.Defaults.stop_words
 afinn = Afinn()
+vader = SentimentIntensityAnalyzer()
 
 def sentiment(comment):
     n = len(comment.split(" "))
-    s = afinn.score(comment)
-    return (((s / n) / 5), s)
+    a = afinn.score(comment)
+    a = ((a / n) / 5)
+    v = vader.polarity_scores(comment)['compound']
+    blob = TextBlob(comment)
+    t = blob.sentiment.polarity
+    final_score = 0.4 * v + 0.35 * t + 0.25 * a
+    return final_score
 
 def normalize(comment, lowercase=True, remove_stopwords=True):
     if lowercase:
@@ -91,8 +99,7 @@ async def ws():
             y = {}
             y['body'] = t
             y['score'] = c.score
-            y['sentiment'] = sentiment(t)[0]
-            y['whole_sentiment'] = sentiment(t)[1]
+            y['sentiment'] = sentiment(t)
             y['permalink'] = c.permalink
             z = json.dumps(y)
             print(z)
