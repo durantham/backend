@@ -3,6 +3,7 @@ from psaw import PushshiftAPI
 from bs4 import BeautifulSoup
 import spacy
 from langdetect import detect
+from afinn import Afinn
 from markdown import markdown
 import time
 import json
@@ -33,6 +34,12 @@ app = Quart(__name__)
 api = PushshiftAPI()
 nlp = spacy.load("en", disable=['parser', 'tagger', 'ner'])
 stops = nlp.Defaults.stop_words
+afinn = Afinn()
+
+def sentiment(comment):
+    n = len(comment.split(" "))
+    s = afinn.score(comment)
+    return (((s / n) / 5), s)
 
 def normalize(comment, lowercase=True, remove_stopwords=True):
     if lowercase:
@@ -56,6 +63,7 @@ def preprocess(comment):
     text = normalize(text)
     text = re.sub(r'[^a-zA-Z0-9]+', ' ', text)
     text = text.strip()
+    text = text.replace('PRON', '')
     return text
 
 @app.websocket('/ws')
@@ -70,18 +78,24 @@ async def ws():
     print(datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S'))
     for c in gen:
         if not c.author.lower().endswith('bot'):
-            y = {}
-            y['body'] = preprocess(c.body)
-            y['score'] = c.score
-            z = json.dumps(y)
             x.append(c)
             t = preprocess(c.body)
-            d = detect(t)
-            print("++++", d,"++++")
-            if d != 'en':
-                print("X")
+            try:
+                d = detect(t)
+                print("++++", d,"++++")
+                if d != 'en':
+                    print("X")
+                    continue
+            except:
                 continue
-            # print(c)
+            y = {}
+            y['body'] = t
+            y['score'] = c.score
+            y['sentiment'] = sentiment(t)[0]
+            y['whole_sentiment'] = sentiment(t)[1]
+            y['permalink'] = c.permalink
+            z = json.dumps(y)
+            print(z)
             print(datetime.utcfromtimestamp(c.created_utc).strftime('%Y-%m-%d %H:%M:%S'))
             await websocket.send(z)
             if len(x) > m:
